@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VYBZ AI — Voice Studio</title>
+<style>
+:root{--bg:#0b0b10;--card:#16161f;--line:#2a2a3a;--tx:#f2f0fa;--mut:#9a98b0;--v:#8b5cf6;--b:#38bdf8;--bad:#f87171;--ok:#4ade80;--warn:#fbbf24;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html{color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0}h2{font-size:15px;margin:0 0 8px;color:var(--mut);font-weight:600}
+.tag{background:linear-gradient(90deg,var(--v),var(--b));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0}
+canvas{width:100%;height:110px;background:#0e0e16;border-radius:12px;display:block}
+.meter{height:8px;background:#0e0e16;border-radius:6px;margin-top:10px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--warn),var(--bad));transition:width .05s}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+button{font:inherit;border:0;border-radius:12px;padding:12px 16px;background:#262636;color:var(--tx);min-height:44px}
+button.p{background:linear-gradient(135deg,var(--v),#6d28d9);font-weight:600}
+button.r{background:#dc2626}button:disabled{opacity:.4}
+.t{font-variant-numeric:tabular-nums;font-size:26px;margin-left:auto}
+.q{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:14px;margin-top:8px}
+.q b{display:block;font-size:12px;color:var(--mut);font-weight:500}
+.score{font-size:34px;font-weight:700}
+.item{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
+.item:first-child{border-top:0}.item div{flex:1;min-width:0}.item small{color:var(--mut)}
+audio{width:100%;margin-top:8px}
+ol{padding-left:18px;margin:6px 0;color:var(--mut);font-size:14px}
+select{font:inherit;background:#262636;color:var(--tx);border:0;border-radius:12px;padding:12px}
+.msg{color:var(--warn);font-size:14px;margin-top:8px}
+</style></head><body><main>
+<h1><span class="tag">VYBZ AI</span> Voice Studio</h1>
+<div style="color:var(--mut);font-size:14px">Your Voice. Your Sound. Your Next Hit.</div>
+
+<div class="card">
+  <h2>Record</h2>
+  <canvas id="wave" width="600" height="220"></canvas>
+  <div class="meter"><i id="lvl"></i></div>
+  <div class="row">
+    <select id="kind"><option value="singing">Singing sample</option><option value="speaking">Speaking sample</option></select>
+    <span class="t" id="time">0:00</span>
+  </div>
+  <div class="row">
+    <button class="p" id="rec">● Record</button>
+    <button id="pause" disabled>Pause</button>
+    <button class="r" id="stop" disabled>Stop</button>
+  </div>
+  <label style="display:flex;gap:8px;font-size:13px;color:var(--mut);margin-top:12px"><input type="checkbox" id="consent"><span>This is my own voice. I consent to using these recordings to train a voice model for my own songs. I won't record anyone else.</span></label>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div class="card" id="review" hidden>
+  <h2>Quality check</h2>
+  <audio id="player" controls></audio>
+  <div class="row"><div class="score" id="score">–</div><div id="verdict" style="color:var(--mut)"></div></div>
+  <div class="q" id="stats"></div>
+  <div class="row"><button class="p" id="save">Save to library</button><button id="retake">Retake</button></div>
+</div>
+
+<div class="card">
+  <h2>Recording tips</h2>
+  <ol><li>Quiet room, phone 15–20 cm from your mouth.</li><li>Sing at your natural level — peaks under 0 dB, no clipping.</li><li>Record low, mid and high notes, 30–60s each.</li><li>No backing track, no reverb, no other voices.</li></ol>
+  <div style="font-size:13px;color:var(--mut)">Recordings stay on this device (IndexedDB) until you connect an account. Only record your own voice.</div>
+</div>
+
+<div class="card"><h2>Library</h2><div id="lib"><small style="color:var(--mut)">No recordings yet.</small></div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let stream,mr,chunks=[],ac,an,raf,t0=0,acc=0,paused=false,timer,blob,metrics;
+const cv=$('wave'),cx=cv.getContext('2d');
+const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+const db=x=>20*Math.log10(Math.max(x,1e-6));
+const say=m=>$('msg').textContent=m||'';
+
+function draw(){
+  const d=new Uint8Array(an.fftSize);an.getByteTimeDomainData(d);
+  cx.clearRect(0,0,cv.width,cv.height);
+  const g=cx.createLinearGradient(0,0,cv.width,0);g.addColorStop(0,'#8b5cf6');g.addColorStop(1,'#38bdf8');
+  cx.strokeStyle=g;cx.lineWidth=3;cx.beginPath();
+  let pk=0;
+  for(let i=0;i<d.length;i++){const v=(d[i]-128)/128;pk=Math.max(pk,Math.abs(v));
+    const x=i/d.length*cv.width,y=cv.height/2+v*cv.height/2*.95;i?cx.lineTo(x,y):cx.moveTo(x,y);}
+  cx.stroke();
+  $('lvl').style.width=Math.min(100,pk*100)+'%';
+  if(!paused)$('time').textContent=fmt(acc+(performance.now()-t0)/1000);
+  raf=requestAnimationFrame(draw);
+}
+$('rec').onclick=async()=>{
+  say('');
+  if(!$('consent').checked){say('Please confirm the voice consent box first.');return;}
+  if(!navigator.mediaDevices?.getUserMedia){say('Microphone recording is not supported in this browser (HTTPS required).');return;}
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}
+  catch(e){say(e.name==='NotAllowedError'?'Microphone permission denied. Enable it in your browser site settings.':'Could not open microphone: '+e.message);return;}
+  ac=new (window.AudioContext||window.webkitAudioContext)();
+  const src=ac.createMediaStreamSource(stream);an=ac.createAnalyser();an.fftSize=1024;src.connect(an);
+  chunks=[];mr=new MediaRecorder(stream);
+  mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  mr.onstop=finish;mr.start();
+  acc=0;t0=performance.now();paused=false;draw();
+  $('rec').disabled=true;$('pause').disabled=false;$('stop').disabled=false;$('review').hidden=true;
+};
+$('pause').onclick=()=>{
+  if(!paused){mr.pause();acc+=(performance.now()-t0)/1000;paused=true;$('pause').textContent='Resume';}
+  else{mr.resume();t0=performance.now();paused=false;$('pause').textContent='Pause';}
+};
+$('stop').onclick=()=>{if(mr.state!=='inactive')mr.stop();};
+async function finish(){
+  cancelAnimationFrame(raf);stream.getTracks().forEach(t=>t.stop());ac.close();
+  $('rec').disabled=false;$('pause').disabled=true;$('stop').disabled=true;$('pause').textContent='Pause';
+  blob=new Blob(chunks,{type:mr.mimeType});$('player').src=URL.createObjectURL(blob);
+  await analyze(blob);$('review').hidden=false;$('review').scrollIntoView({behavior:'smooth'});
+}
+async function analyze(b){
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  let buf;try{buf=await ctx.decodeAudioData(await b.arrayBuffer());}catch(e){say('Could not decode recording.');ctx.close();return;}
+  const x=buf.getChannelData(0),sr=buf.sampleRate,dur=buf.duration,N=Math.floor(sr*.05);
+  let peak=0,clip=0;const rms=[];
+  for(let i=0;i<x.length;i++){const a=Math.abs(x[i]);if(a>peak)peak=a;if(a>=.99)clip++;}
+  for(let i=0;i+N<=x.length;i+=N){let s=0;for(let j=0;j<N;j++)s+=x[i+j]**2;rms.push(Math.sqrt(s/N));}
+  const sorted=[...rms].sort((a,b)=>a-b);
+  const floor=sorted[Math.floor(sorted.length*.1)]||0,sig=sorted[Math.floor(sorted.length*.9)]||0;
+  const snr=db(sig)-db(floor),clipPct=clip/x.length*100,loud=rms.filter(r=>r>floor*3+.005).length/rms.length;
+  let s=100;const notes=[];
+  if(dur<10){s-=25;notes.push('Too short (aim for 30s+)');}
+  if(clipPct>.1){s-=30;notes.push('Clipping — move back or sing softer');}
+  if(db(floor)>-45){s-=20;notes.push('Noisy background');}
+  if(snr<20){s-=15;notes.push('Low signal-to-noise');}
+  if(db(peak)<-24){s-=15;notes.push('Too quiet');}
+  if(sr<32000){s-=10;notes.push('Low sample rate');}
+  if(loud<.3){s-=10;notes.push('Mostly silence');}
+  s=Math.max(0,s);metrics={dur,sr,peak:db(peak),floor:db(floor),clipPct,snr,score:s};
+  $('score').textContent=s;$('score').style.color=s>=75?'var(--ok)':s>=50?'var(--warn)':'var(--bad)';
+  $('verdict').textContent=notes.length?notes.join(' · '):'Good training-quality sample';
+  const st=[['Duration',fmt(dur)],['Sample rate',(sr/1000).toFixed(1)+' kHz'],['Peak',db(peak).toFixed(1)+' dB'],
+    ['Noise floor',db(floor).toFixed(1)+' dB'],['Clipping',clipPct.toFixed(2)+'%'],['SNR',snr.toFixed(0)+' dB']];
+  $('stats').innerHTML=st.map(([k,v])=>`<div><b>${k}</b>${v}</div>`).join('');
+  ctx.close();
+}
+$('retake').onclick=()=>{$('review').hidden=true;blob=null;$('time').textContent='0:00';};
+// IndexedDB library
+const open=()=>new Promise((res,rej)=>{const r=indexedDB.open('vybz',1);r.onupgradeneeded=()=>r.result.createObjectStore('rec',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+const tx=async(m,f)=>{const d=await open();return new Promise((res,rej)=>{const t=d.transaction('rec',m),q=f(t.objectStore('rec'));t.oncomplete=()=>res(q.result);t.onerror=()=>rej(t.error);});};
+$('save').onclick=async()=>{
+  if(!blob)return;
+  try{await tx('readwrite',s=>s.put({id:crypto.randomUUID(),kind:$('kind').value,blob,m:metrics,at:Date.now()}));}
+  catch(e){say('Could not save: '+e.message);return;}
+  $('review').hidden=true;$('time').textContent='0:00';blob=null;load();
+};
+async function load(){
+  let all=[];try{all=await tx('readonly',s=>s.getAll());}catch(e){return;}
+  all.sort((a,b)=>b.at-a.at);
+  $('lib').innerHTML=all.length?'':'<small style="color:var(--mut)">No recordings yet.</small>';
+  for(const r of all){
+    const el=document.createElement('div');el.className='item';
+    el.innerHTML=`<div><b>${r.kind==='singing'?'Singing':'Speaking'} · ${fmt(r.m.dur)}</b><br><small>Quality ${r.m.score} · ${new Date(r.at).toLocaleDateString()}</small><audio controls></audio></div><button class="dl">Save file</button><button class="del">Delete</button>`;
+    el.querySelector('audio').src=URL.createObjectURL(r.blob);
+    el.querySelector('.dl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(r.blob);a.download='vybz-voice-'+r.kind+'-'+r.id.slice(0,6)+(r.blob.type.includes('mp4')?'.m4a':'.webm');a.click();};
+    el.querySelector('.del').onclick=async()=>{await tx('readwrite',s=>s.delete(r.id));load();};
+    $('lib').appendChild(el);
+  }
+}
+load();
+</script></body></html>
