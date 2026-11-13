@@ -1,4 +1,4 @@
-// Supabase Edge Function named "vybz". Secrets needed: GEMINI_API_KEY, YOUTUBE_API_KEY. Optional: GEMINI_MODEL.
+// Supabase Edge Function named "vybz". Secrets: GROQ_API_KEY or GEMINI_API_KEY (one is enough), YOUTUBE_API_KEY. Also OPENROUTER_API_KEY. Optional: GROQ_MODEL, OPENROUTER_MODEL, GEMINI_MODEL.
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type"};
 const json=(o:unknown,s=200)=>new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 const clip=(v:unknown,n:number)=>String(v??"").slice(0,n);
@@ -8,7 +8,7 @@ Deno.serve(async(req)=>{
   try{
     const b=await req.json();
     if(b.action==="write"){
-      const key=Deno.env.get("GEMINI_API_KEY");if(!key)return json({error:"GEMINI_API_KEY secret is not set"},500);
+      const key=Deno.env.get("GEMINI_API_KEY"),gk=Deno.env.get("GROQ_API_KEY"),ok=Deno.env.get("OPENROUTER_API_KEY");if(!key&&!gk&&!ok)return json({error:"Set GROQ_API_KEY, OPENROUTER_API_KEY or GEMINI_API_KEY as a secret"},500);
       const model=Deno.env.get("GEMINI_MODEL")||"gemini-2.0-flash";
       const lang=clip(b.language,60)||"English",genre=clip(b.genre,60)||"whatever genre fits",mood=clip(b.mood,60)||"any",
             topic=clip(b.topic,300),dir=clip(b.direction,300);
@@ -18,6 +18,12 @@ Deno.serve(async(req)=>{
         :b.mode==="rhymes"
         ?`List 20 rhyming and near-rhyming words for "${clip(b.topic,40)}" in ${lang}, grouped by syllable count.`
         :`Write a complete song (verse 1, pre-chorus, chorus, verse 2, bridge, final chorus) about: ${topic}. Genre: ${genre}. Language: ${lang} (mix languages if asked). Mood: ${mood}. ${dir} End with a caption and 5 hashtags.`;
+      if(!gk&&ok){const orr=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${ok}`},
+        body:JSON.stringify({model:Deno.env.get("OPENROUTER_MODEL")||"meta-llama/llama-3.3-70b-instruct:free",messages:[{role:"system",content:rules},{role:"user",content:task}],temperature:1})});
+        const od=await orr.json();if(!orr.ok)return json({error:od?.error?.message||"OpenRouter error"},502);return json({text:od?.choices?.[0]?.message?.content||""});}
+      if(gk){const gr=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${gk}`},
+        body:JSON.stringify({model:Deno.env.get("GROQ_MODEL")||"openai/gpt-oss-120b",messages:[{role:"system",content:rules},{role:"user",content:task}],temperature:1})});
+        const gd=await gr.json();if(!gr.ok)return json({error:gd?.error?.message||"Groq error"},502);return json({text:gd?.choices?.[0]?.message?.content||""});}
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({systemInstruction:{parts:[{text:rules}]},contents:[{parts:[{text:task}]}],generationConfig:{temperature:1}})});
