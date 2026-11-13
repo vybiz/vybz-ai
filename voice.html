@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>VYBZ AI — Voice Lab</title>
+<link rel="stylesheet" href="app.css"></head><body><main>
+<h1><span class="tag">VYBZ</span> Voice Lab</h1>
+<div class="card"><h2>Be clear on what this is</h2><small>Cloning a voice to <b>sing</b> needs a singing voice conversion model (for example RVC-based tools such as Applio) running on a GPU. That can't run in a free web page, so this guide walks you through doing it outside VYBZ for free. Only use your own voice. Never clone another person or artist. Check each tool's own license before commercial use.</small></div>
+<div class="card"><h2>Your checklist (saved on this device)</h2><div id="ck"></div></div>
+<div class="card"><h2>After you have a converted vocal</h2><small>Download it to your phone, open the <b>Mix</b> tab, upload it as the vocal, and run Auto mix &amp; master. Or add it as a track in the <b>Edit</b> tab.</small></div>
+</main><script src="nav.js"></script><script>
+const S=['I am only using my own voice and I consent to training a model of it','Recorded 10+ minutes of clean singing in the Record tab (low, mid and high notes) and saved each take','Exported the takes with Save file (convert to WAV if the tool needs it)','Opened Applio (or another RVC tool) in Google Colab or Kaggle with a free GPU and trained a model on my takes','Recorded a guide vocal and converted it with my trained model','Downloaded the converted vocal and mixed it here'];
+let st={};try{st=JSON.parse(localStorage.getItem('vybz_voice')||'{}');}catch(e){}
+S.forEach((t,i)=>{const l=document.createElement('label');l.style.cssText='display:flex;gap:10px;margin:10px 0;font-size:15px';
+  const c=document.createElement('input');c.type='checkbox';c.checked=!!st[i];c.onchange=()=>{st[i]=c.checked;localStorage.setItem('vybz_voice',JSON.stringify(st));};
+  const s=document.createElement('span');s.textContent=t;l.append(c,s);document.getElementById('ck').append(l);});
+</script></body></html>

@@ -24,6 +24,10 @@ audio{width:100%;margin-top:6px}
 .ck{display:flex;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}.ck:first-child{border-top:0}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 small{color:var(--mut)}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#0f0f17;border-top:1px solid #2a2a3a;padding-bottom:env(safe-area-inset-bottom,0px);z-index:9}
+nav a{flex:1;text-align:center;padding:14px 4px;color:#9a98b0;text-decoration:none;font-size:13px}nav a.on{color:#a78bfa;font-weight:700}
+main{padding-bottom:96px!important}
+select{font:inherit;background:#262636;color:#f2f0fa;border:0;border-radius:12px;padding:12px;width:100%;margin-top:4px}
 </style></head><body><main>
 <h1><span class="tag">VYBZ AI</span> Auto Mix &amp; Master</h1>
 <small>Runs entirely on your device. Nothing is uploaded.</small>
@@ -32,6 +36,7 @@ small{color:var(--mut)}
   <h2>1. Your tracks</h2>
   <label>Instrumental (WAV / MP3 / M4A)<input type="file" id="inst" accept="audio/*"></label>
   <label>Vocal (dry, no backing track)<input type="file" id="voc" accept="audio/*"></label>
+  <label>Or use a recording saved in Voice Studio<select id="saved"><option value="">— none —</option></select></label>
   <label>Vocal start offset: <span id="offv">0.0</span>s<input type="range" id="off" min="-0.5" max="30" step="0.01" value="0"></label>
   <button id="recb" style="margin-top:12px;width:100%">🎙 Record vocal over this beat</button>
   <small>Use headphones so the beat doesn't leak into the mic. Recording stops when the beat ends, or tap again. Then run Auto mix &amp; master. If your voice sounds early or late, nudge the offset.</small><br>
@@ -60,6 +65,8 @@ small{color:var(--mut)}
   <small>No tool can promise a song will go viral. These checks only cover what can be measured on the audio. Hook strength, the first 3 seconds, and posting consistently still decide the rest.</small>
 </div>
 </main>
+<script src="nav.js"></script>
+
 <script>
 const $=id=>document.getElementById(id),SR=44100;
 let I,V,final,dryB,wetB;
@@ -174,6 +181,17 @@ $('go').onclick=async()=>{
   }catch(e){$('st').textContent='Failed: '+e.message;}
   $('go').disabled=false;
 };
+const savedJs=1;
+(async()=>{try{
+  const d=await new Promise((res,rej)=>{const r=indexedDB.open('vybz',1);r.onupgradeneeded=()=>r.result.createObjectStore('rec',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+  const all=await new Promise((res,rej)=>{const q=d.transaction('rec','readonly').objectStore('rec').getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});
+  all.sort((a,b)=>b.at-a.at);
+  for(const r of all){const o=document.createElement('option');o.value=r.id;o.textContent=(r.kind==='singing'?'Singing ':'Speaking ')+Math.round(r.m.dur)+'s · quality '+r.m.score+' · '+new Date(r.at).toLocaleDateString();$('saved').append(o);}
+  $('saved').onchange=async()=>{const r=all.find(x=>x.id===$('saved').value);if(!r)return;
+    $('st').textContent='Loading saved recording…';
+    try{V=await dec(r.blob);$('st').textContent='Saved recording loaded.';}catch(e){$('st').textContent='Could not read that recording.';}
+    $('go').disabled=!(I&&V);};
+}catch(e){}})();
 const save=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();};
 $('dl').onclick=()=>final&&save(wav(final),'vybz-master.wav');
 for(const s of [15,30])$('c'+s).onclick=()=>{if(!final)return;const [a,b]=bestWindow(final,s);save(wav(final,a,b),`vybz-hook-${s}s.wav`);};

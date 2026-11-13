@@ -1,0 +1,48 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>VYBZ AI — Songwriter</title>
+<link rel="stylesheet" href="app.css"></head><body><main>
+<h1><span class="tag">VYBZ</span> Songwriter</h1><small>Original lyrics only. Edit anything by hand.</small>
+<div class="card">
+  <label class="mut">Topic, story or feeling (for Rhymes: one word)<input id="topic" placeholder="e.g. rising after a hard year"></label>
+  <select id="genre"><option value="">Any genre</option><option>Afrobeats</option><option>Afro-fusion</option><option>Afro-rock</option><option>Pop</option><option>R&B</option><option>Gospel</option><option>Hip-hop</option><option>Trap</option><option>Dancehall</option><option>Reggae</option><option>EDM</option><option>Acoustic</option><option>Indie</option><option>Country</option></select>
+  <input id="lang" placeholder="Language(s), e.g. English + Pidgin">
+  <input id="mood" placeholder="Mood, e.g. emotional, party, motivational">
+  <input id="dir" placeholder="Extra direction (optional)">
+  <select id="mode"><option value="song">Full song</option><option value="hooks">5 short hooks</option><option value="rhymes">Rhyme helper</option></select>
+  <div class="row"><button class="p" id="gen">Generate</button></div><div id="msg"></div>
+</div>
+<div class="card"><h2>Lyrics (editable)</h2><textarea id="out" placeholder="Your lyrics appear here."></textarea>
+  <div class="row"><button id="cnt">Count syllables</button><button id="cp">Copy</button><button id="sv">Save</button></div><pre id="syl" class="mut" style="white-space:pre-wrap;font-size:13px"></pre></div>
+<div class="card"><h2>Saved lyrics</h2><div id="saved"></div></div>
+<small>Check your title and hook against existing songs before release. No tool can guarantee a song will be popular.</small>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script><script src="nav.js"></script>
+<script>
+const $=id=>document.getElementById(id),say=m=>$('msg').textContent=m||'';
+const sb=(typeof SUPABASE_URL!=='undefined'&&!SUPABASE_URL.startsWith('PASTE'))?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+async function call(body){
+  if(!sb)throw new Error('Add your Supabase keys to config.js first.');
+  const {data:s}=await sb.auth.getSession();if(!s.session)throw new Error('Log in on the Me tab first.');
+  const {data,error}=await sb.functions.invoke('vybz',{body});
+  if(error){let m=error.message;try{m=(await error.context.json()).error||m;}catch(e){}throw new Error(m);}
+  if(data.error)throw new Error(data.error);return data;}
+$('gen').onclick=async()=>{
+  if(!$('topic').value.trim()){say('Enter a topic first.');return;}
+  $('gen').disabled=true;say('Writing…');
+  try{const d=await call({action:'write',mode:$('mode').value,topic:$('topic').value,genre:$('genre').value,language:$('lang').value,mood:$('mood').value,direction:$('dir').value});
+    $('out').value=d.text||'(empty reply)';say('');}catch(e){say(e.message);}
+  $('gen').disabled=false;};
+const syl=w=>{w=w.toLowerCase().replace(/[^a-z]/g,'');if(!w)return 0;const m=w.replace(/e$/,'').match(/[aeiouy]+/g);return Math.max(1,m?m.length:1);};
+$('cnt').onclick=()=>{$('syl').textContent='Estimated syllables (English only):\n'+$('out').value.split('\n').filter(l=>l.trim()).map(l=>String(l.split(/\s+/).reduce((a,w)=>a+syl(w),0)).padStart(2)+' | '+l).join('\n');};
+$('cp').onclick=async()=>{try{await navigator.clipboard.writeText($('out').value);say('Copied.');}catch(e){say('Copy failed. Select the text manually.');}};
+const KEY='vybz_lyrics';const get=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){return[];}};
+function list(){const b=$('saved');b.textContent='';const a=get();if(!a.length){b.innerHTML='<small>Nothing saved yet.</small>';return;}
+  a.forEach((x,i)=>{const r=document.createElement('div');r.className='row';const t=document.createElement('span');t.style.flex='1';t.textContent=x.t;
+    const l=document.createElement('button');l.textContent='Open';l.onclick=()=>{$('out').value=x.b;};
+    const d=document.createElement('button');d.textContent='Delete';d.onclick=()=>{const g=get();g.splice(i,1);localStorage.setItem(KEY,JSON.stringify(g));list();};
+    r.append(t,l,d);b.append(r);});}
+$('sv').onclick=()=>{const b=$('out').value.trim();if(!b)return;const g=get();g.unshift({t:($('topic').value||b.split('\n')[0]).slice(0,40)+' · '+new Date().toLocaleDateString(),b});
+  localStorage.setItem(KEY,JSON.stringify(g.slice(0,50)));list();say('Saved on this device.');};
+list();
+</script></body></html>

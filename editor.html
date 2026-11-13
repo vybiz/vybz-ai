@@ -1,0 +1,80 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>VYBZ AI — Multitrack Editor</title>
+<link rel="stylesheet" href="app.css">
+<style>.trk{border-top:1px solid var(--line);padding:10px 0}.lane{position:relative;margin:8px 0;background:#0e0e16;border-radius:10px;overflow:hidden}
+.lane canvas{width:100%;height:56px;display:block}.ph{position:absolute;top:0;bottom:0;width:2px;background:#fff;left:0;pointer-events:none}
+.sl{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--mut)}.sl span{width:110px}.sl input{flex:1}.row button{padding:8px 12px;min-height:40px}</style></head><body><main>
+<h1><span class="tag">VYBZ</span> Multitrack Editor</h1>
+<div class="card"><h2>Add tracks</h2><input type="file" id="file" accept="audio/*" multiple>
+<select id="saved"><option value="">Add a Voice Studio recording…</option></select><small>Only use audio you have rights to.</small></div>
+<div class="card"><div class="row"><button class="p" id="play">▶ Play</button><button id="stopb">■ Stop</button><button id="undo">Undo</button><button id="redo">Redo</button>
+<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="loop"> Loop</label></div>
+<small id="time">0:00 / 0:00</small><div id="tl"><small>Add a beat and a vocal to start. Tap a waveform to move the playhead. Use Split then ✕ to trim.</small></div></div>
+<button class="p" id="exp" style="width:100%">Export mix (WAV)</button><div id="msg"></div>
+</main><script src="nav.js"></script>
+<script>
+const $=id=>document.getElementById(id),say=m=>$('msg').textContent=m||'';
+const AC=window.AudioContext||window.webkitAudioContext,SR=44100,COL=['#8b5cf6','#38bdf8','#f472b6','#4ade80','#fbbf24'];
+let ctx,tracks=[],hist=[],fut=[],playing=false,ph=0,t0=0,srcs=[],raf;
+const gc=()=>ctx||(ctx=new AC()),fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+const total=()=>Math.max(1,...tracks.map(t=>t.offset+t.buf.duration));
+const snap=()=>tracks.map(t=>({...t}));
+const push=()=>{hist.push(snap());if(hist.length>50)hist.shift();fut=[];};
+function stopSrc(){srcs.forEach(s=>{try{s.stop();}catch(e){}});srcs=[];}
+function stop(){stopSrc();playing=false;cancelAnimationFrame(raf);}
+const audible=t=>!t.mute&&(tracks.some(x=>x.solo)?t.solo:true);
+function build(c,from,dest){const out=[];tracks.filter(audible).forEach(t=>{const off=Math.max(0,from-t.offset);if(off>=t.buf.duration)return;
+  const s=c.createBufferSource(),g=c.createGain();s.buffer=t.buf;g.gain.value=t.gain;s.connect(g).connect(dest);
+  s.start((c.currentTime||0)+Math.max(0,t.offset-from),off);out.push(s);});return out;}
+async function play(){if(!tracks.length)return;const c=gc();await c.resume();stopSrc();if(ph>=total()-.05)ph=0;
+  srcs=build(c,ph,c.destination);t0=c.currentTime-ph;playing=true;tick();}
+function tick(){if(!playing)return;ph=ctx.currentTime-t0;const T=total();
+  if(ph>=T){stop();if($('loop').checked){ph=0;play();}else ph=0;}
+  document.querySelectorAll('.ph').forEach(e=>e.style.left=(ph/T*100)+'%');$('time').textContent=fmt(ph)+' / '+fmt(T);
+  if(playing)raf=requestAnimationFrame(tick);}
+function seek(t){const w=playing;stop();ph=Math.max(0,Math.min(total(),t));render();if(w)play();}
+function chg(i,p){push();tracks[i]={...tracks[i],...p};const w=playing;stop();render();if(w)play();}
+function del(i){push();tracks.splice(i,1);stop();render();}
+function slice(b,a,e){const s=Math.floor(a*b.sampleRate),n=Math.floor(e*b.sampleRate)-s,nb=gc().createBuffer(b.numberOfChannels,n,b.sampleRate);
+  for(let c=0;c<b.numberOfChannels;c++)nb.copyToChannel(b.getChannelData(c).subarray(s,s+n),c);return nb;}
+function split(i){const t=tracks[i],l=ph-t.offset;if(l<.05||l>t.buf.duration-.05){say('Move the playhead inside this track first.');return;}say('');
+  push();stop();const a={...t,buf:slice(t.buf,0,l),name:t.name+' A'},b={...t,buf:slice(t.buf,l,t.buf.duration),offset:ph,name:t.name+' B'};
+  tracks.splice(i,1,a,b);render();}
+const btn=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.onclick=f;return b;};
+function sl(label,min,max,step,val,fn){const d=document.createElement('div');d.className='sl';const s=document.createElement('span'),r=document.createElement('input');
+  r.type='range';r.min=min;r.max=max;r.step=step;r.value=val;s.textContent=label+': '+val;r.oninput=()=>s.textContent=label+': '+r.value;r.onchange=()=>fn(+r.value);d.append(s,r);return d;}
+function draw(cv,t,T,col){const W=cv.width=cv.clientWidth*(devicePixelRatio||1),H=cv.height=56*(devicePixelRatio||1),x=cv.getContext('2d'),d=t.buf.getChannelData(0),sr=t.buf.sampleRate;
+  x.strokeStyle=col;x.lineWidth=1;x.beginPath();
+  for(let px=0;px<W;px++){let s=Math.floor((px/W*T-t.offset)*sr),e=Math.floor(((px+1)/W*T-t.offset)*sr);if(e<0||s>=d.length)continue;s=Math.max(0,s);e=Math.min(d.length,e);
+    const st=Math.max(1,Math.floor((e-s)/40));let pk=0;for(let i=s;i<e;i+=st){const a=Math.abs(d[i]);if(a>pk)pk=a;}x.moveTo(px,H/2-pk*H/2*.95);x.lineTo(px,H/2+pk*H/2*.95);}
+  x.stroke();}
+function render(){const box=$('tl'),T=total();box.textContent='';
+  if(!tracks.length){box.innerHTML='<small>Add a beat and a vocal to start.</small>';$('time').textContent='0:00 / 0:00';return;}
+  tracks.forEach((t,i)=>{const r=document.createElement('div');r.className='trk';const h=document.createElement('div');h.className='row';
+    const nm=document.createElement('b');nm.textContent=t.name;nm.style.cssText='flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis';
+    h.append(nm,btn(t.mute?'Unmute':'Mute',()=>chg(i,{mute:!t.mute})),btn(t.solo?'Unsolo':'Solo',()=>chg(i,{solo:!t.solo})),btn('Split',()=>split(i)),btn('✕',()=>del(i)));
+    const lane=document.createElement('div');lane.className='lane';const cv=document.createElement('canvas'),p=document.createElement('i');p.className='ph';lane.append(cv,p);
+    lane.onclick=e=>{const b=lane.getBoundingClientRect();seek((e.clientX-b.left)/b.width*T);};
+    r.append(h,lane,sl('Volume %',0,150,1,Math.round(t.gain*100),v=>chg(i,{gain:v/100})),sl('Offset s',0,120,.05,+t.offset.toFixed(2),v=>chg(i,{offset:v})));
+    box.append(r);requestAnimationFrame(()=>draw(cv,t,T,COL[i%COL.length]));});
+  document.querySelectorAll('.ph').forEach(e=>e.style.left=(ph/T*100)+'%');$('time').textContent=fmt(ph)+' / '+fmt(T);}
+function add(name,buf){push();tracks.push({name:name.slice(0,30),buf,offset:0,gain:1,mute:false,solo:false});stop();render();}
+$('file').onchange=async()=>{for(const f of $('file').files){say('Reading '+f.name+'…');try{add(f.name,await gc().decodeAudioData(await f.arrayBuffer()));say('');}catch(e){say('Could not decode '+f.name+'. Try WAV or MP3.');}}$('file').value='';};
+$('play').onclick=()=>playing?(stop(),render()):play();$('stopb').onclick=()=>{stop();ph=0;render();};
+$('undo').onclick=()=>{if(!hist.length)return;fut.push(snap());tracks=hist.pop();stop();render();};
+$('redo').onclick=()=>{if(!fut.length)return;hist.push(snap());tracks=fut.pop();stop();render();};
+function wav(b){const n=b.length,v=new DataView(new ArrayBuffer(44+n*4)),w=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+  w(0,'RIFF');v.setUint32(4,36+n*4,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,SR,true);v.setUint32(28,SR*4,true);v.setUint16(32,4,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*4,true);
+  let p=44;const L=b.getChannelData(0),R=b.getChannelData(1);for(let i=0;i<n;i++){v.setInt16(p,Math.max(-1,Math.min(1,L[i]))*32767,true);v.setInt16(p+2,Math.max(-1,Math.min(1,R[i]))*32767,true);p+=4;}
+  return new Blob([v],{type:'audio/wav'});}
+$('exp').onclick=async()=>{if(!tracks.some(audible)){say('Nothing audible to export.');return;}say('Rendering…');
+  try{const o=new OfflineAudioContext(2,Math.ceil(total()*SR)+SR,SR);build(o,0,o.destination);const r=await o.startRendering();
+    let pk=0;for(let c=0;c<2;c++){const d=r.getChannelData(c);for(let i=0;i<d.length;i++)pk=Math.max(pk,Math.abs(d[i]));}
+    const g=pk>.891?.891/pk:1;if(g!==1)for(let c=0;c<2;c++){const d=r.getChannelData(c);for(let i=0;i<d.length;i++)d[i]*=g;}
+    const a=document.createElement('a');a.href=URL.createObjectURL(wav(r));a.download='vybz-mix.wav';a.click();say('Exported. (Plain mix; use the Mix tab for mastering.)');}
+  catch(e){say('Export failed: '+e.message);}};
+(async()=>{try{const d=await new Promise((res,rej)=>{const r=indexedDB.open('vybz',1);r.onupgradeneeded=()=>r.result.createObjectStore('rec',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+  const all=await new Promise((res,rej)=>{const q=d.transaction('rec','readonly').objectStore('rec').getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});
+  all.sort((a,b)=>b.at-a.at);for(const r of all){const o=document.createElement('option');o.value=r.id;o.textContent=(r.kind==='singing'?'Singing ':'Speaking ')+Math.round(r.m.dur)+'s · '+new Date(r.at).toLocaleDateString();$('saved').append(o);}
+  $('saved').onchange=async()=>{const r=all.find(x=>x.id===$('saved').value);if(!r)return;try{add('Voice '+new Date(r.at).toLocaleDateString(),await gc().decodeAudioData(await r.blob.arrayBuffer()));}catch(e){say('Could not read that recording.');}$('saved').value='';};}catch(e){}})();
+</script></body></html>

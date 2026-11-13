@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>VYBZ AI — Trend Radar</title>
+<link rel="stylesheet" href="app.css"></head><body><main>
+<h1><span class="tag">VYBZ</span> Trend Radar</h1><small>Source: YouTube music chart (official API). Nothing is scraped.</small>
+<div class="card"><select id="region"><option value="NG">Nigeria</option><option value="US">United States</option><option value="GB">United Kingdom</option><option value="GH">Ghana</option><option value="ZA">South Africa</option><option value="KE">Kenya</option><option value="IN">India</option><option value="BR">Brazil</option></select>
+<div class="row"><button class="p" id="go">Load trends</button></div><div id="msg"></div></div>
+<div class="card" id="sum" hidden></div><div id="list"></div>
+<div class="card"><h2>How the score works</h2><small><b>Measured:</b> views, likes, publish time. <b>Computed:</b> views per hour (growth velocity, 60%) and like rate (engagement, 40%), each ranked within this chart. <b>Not available here:</b> cross-platform presence, saturation, audience relevance, short-form fit, and history. TikTok and Instagram trend data needs their approved APIs. This is a snapshot of what is already popular, not a prediction that anything will go viral.</small></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script><script src="nav.js"></script>
+<script>
+const $=id=>document.getElementById(id),say=m=>$('msg').textContent=m||'';
+const sb=(typeof SUPABASE_URL!=='undefined'&&!SUPABASE_URL.startsWith('PASTE'))?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+async function call(body){
+  if(!sb)throw new Error('Add your Supabase keys to config.js first.');
+  const {data:s}=await sb.auth.getSession();if(!s.session)throw new Error('Log in on the Me tab first.');
+  const {data,error}=await sb.functions.invoke('vybz',{body});
+  if(error){let m=error.message;try{m=(await error.context.json()).error||m;}catch(e){}throw new Error(m);}
+  if(data.error)throw new Error(data.error);return data;}
+const rank=(a,f)=>{const s=[...a].sort((x,y)=>f(x)-f(y));return v=>s.length>1?s.indexOf(v)/(s.length-1):.5;};
+const age=h=>h<48?Math.round(h)+'h':Math.round(h/24)+'d',n=x=>x>=1e6?(x/1e6).toFixed(1)+'M':x>=1e3?(x/1e3).toFixed(0)+'K':x;
+$('go').onclick=async()=>{
+  $('go').disabled=true;say('Loading…');$('list').textContent='';$('sum').hidden=true;
+  try{const d=await call({action:'trends',region:$('region').value}),now=Date.now();
+    const it=d.items.map(v=>({...v,hrs:Math.max(1,(now-Date.parse(v.publishedAt))/36e5)}));
+    it.forEach(v=>{v.vel=v.views/v.hrs;v.er=v.views?v.likes/v.views:0;});
+    const rv=rank(it,v=>v.vel),re=rank(it,v=>v.er);it.forEach(v=>v.score=Math.round(100*(.6*rv(v)+.4*re(v))));
+    it.sort((a,b)=>b.score-a.score);
+    const stop=new Set('official video music lyrics lyric audio ft feat the a of and in on to for with my me you your by from is x remix live full hd 4k new song version visualizer'.split(' '));
+    const c={};it.slice(0,15).forEach(v=>(v.title||'').toLowerCase().replace(/[^\p{L}\s]/gu,' ').split(/\s+/).forEach(w=>{if(w.length>2&&!stop.has(w))c[w]=(c[w]||0)+1;}));
+    const terms=Object.entries(c).filter(e=>e[1]>1).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]+' ×'+e[1]).join(', ')||'none repeated';
+    $('sum').hidden=false;$('sum').textContent='Recurring title words in the top 15 (may include artist names, ignore those): '+terms+'. Fetched '+new Date(d.fetchedAt).toLocaleString()+'.';
+    it.slice(0,15).forEach((v,i)=>{const e=document.createElement('div');e.className='card';
+      const t=document.createElement('b');t.textContent=(i+1)+'. '+v.title;const s=document.createElement('div');s.className='mut';s.style.fontSize='14px';
+      s.textContent=v.channel+' · '+n(v.views)+' views · '+age(v.hrs)+' old · '+n(Math.round(v.vel))+' views/hr · like rate '+(v.er*100).toFixed(1)+'% · partial score '+v.score;
+      e.append(t,s);$('list').append(e);});
+    say('');}catch(e){say(e.message);}
+  $('go').disabled=false;};
+</script></body></html>

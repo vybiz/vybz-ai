@@ -19,6 +19,10 @@ button.p{background:linear-gradient(135deg,var(--v),#6d28d9);font-weight:600}
 .item{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
 .item:first-child{border-top:0}.item div{flex:1;min-width:0}small{color:var(--mut)}
 #msg{margin-top:8px;font-size:14px;color:#fbbf24}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#0f0f17;border-top:1px solid #2a2a3a;padding-bottom:env(safe-area-inset-bottom,0px);z-index:9}
+nav a{flex:1;text-align:center;padding:14px 4px;color:#9a98b0;text-decoration:none;font-size:13px}nav a.on{color:#a78bfa;font-weight:700}
+main{padding-bottom:96px!important}
+select{font:inherit;background:#262636;color:#f2f0fa;border:0;border-radius:12px;padding:12px;width:100%;margin-top:4px}
 </style></head><body><main>
 <h1><span class="tag">VYBZ AI</span> Account</h1>
 <div id="msg"></div>
@@ -38,16 +42,17 @@ button.p{background:linear-gradient(135deg,var(--v),#6d28d9);font-weight:600}
   <div class="card"><h2>My cloud recordings</h2><div id="cloud"></div></div>
 </div>
 </main>
+<script src="nav.js"></script>
+
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 // ====== PASTE YOUR VALUES (Supabase → Settings → API Keys). Use the anon/publishable key ONLY. ======
-const SUPABASE_URL='https://ybmcnfvhsdamalntmeck.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlibWNuZnZoc2RhbWFsbnRtZWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ1MDI3MjcsImV4cCI6MjExMDA3ODcyN30.GzOm5GzHZNJFX0jQONEp_D1H06dFLOK7wrBd4igIqB4';
 // ===================================================================================================
 const $=id=>document.getElementById(id);
 const say=m=>$('msg').textContent=m||'';
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
-if(SUPABASE_URL.startsWith('PASTE')){say('Add your Supabase URL and anon key at the top of this file first.');}
+if(SUPABASE_URL.startsWith('PASTE')){say('Add your Supabase URL and anon key in config.js first.');}
 const sb=window.supabase&&!SUPABASE_URL.startsWith('PASTE')?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
 let user=null;
 
